@@ -2,7 +2,10 @@ import asyncio
 import random
 import json
 from datetime import datetime, time, timedelta
-from zoneinfo import ZoneInfo  # ДОДАНО: бібліотека для часових поясів
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    from backports.zoneinfo import ZoneInfo  # ДОДАНО: бібліотека для часових поясів
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from texts import morning_messages, evening_messages, random_love, daily_quotes, pick, pill_messages
 from schedule_data import get_today_classes, get_current_week
