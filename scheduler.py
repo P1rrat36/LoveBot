@@ -2,10 +2,13 @@ import asyncio
 import random
 import json
 from datetime import datetime, time, timedelta
+from zoneinfo import ZoneInfo  # ДОДАНО: бібліотека для часових поясів
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from texts import morning_messages, evening_messages, random_love, daily_quotes, pick, pill_messages
+from schedule_data import get_today_classes, get_current_week
 
 STATS_FILE = "stats.json"
+KYIV_TZ = ZoneInfo("Europe/Kyiv")  # ДОДАНО: встановлюємо Київський час
 
 
 # ────── СТАТИСТИКА ──────
@@ -30,8 +33,9 @@ def save_stats(stats):
 
 # ────── ДОПОМІЖНЕ ──────
 def seconds_until(target: time):
-    now = datetime.now()
-    target_dt = datetime.combine(now.date(), target)
+    now = datetime.now(KYIV_TZ)  # ЗМІНЕНО: тепер беремо час по Києву
+    target_dt = datetime.combine(now.date(), target, tzinfo=KYIV_TZ)  # ЗМІНЕНО: додаємо пояс до цільового часу
+
     if target_dt <= now:
         target_dt += timedelta(days=1)
     return (target_dt - now).total_seconds()
@@ -65,6 +69,37 @@ async def schedule_pill(bot, subscribers, hour, minute, pill_name):
         await asyncio.sleep(60)
 
 
+# ────── НАГАДУВАННЯ ПРО ПАРИ ──────
+async def classes_reminder_task(bot, subscribers):
+    while True:
+        now = datetime.now(KYIV_TZ)
+        today_classes = get_today_classes()
+
+        for cls in today_classes:
+            # Розбираємо час початку пари
+            hour, minute = map(int, cls["time"].split(":"))
+            class_time = datetime.combine(now.date(), time(hour, minute), tzinfo=KYIV_TZ)
+
+            # Рахуємо різницю в хвилинах
+            time_diff = (class_time - now).total_seconds() / 60
+
+            # Якщо до пари залишилось від 9 до 10 хвилин - надсилаємо сповіщення
+            if 9 <= time_diff <= 10:
+                msg_text = (
+                    f"🐰 Сонечко, через 10 хвилин почнеться пара!\n\n"
+                    f"📚 <b>{cls['subject']}</b> ({cls['type']})\n"
+                    f"👩‍🏫 Викладач: {cls['teacher']}\n"
+                    f"⏰ Час: {cls['time']}\n\n"
+                    f"🔗 <a href='{cls['link']}'>Посилання на підключення</a>\n\n"
+                    f"Успіхів тобі, ти в мене найрозумніша! ❤️"
+                )
+
+                for user_id in subscribers:
+                    await bot.send_message(user_id, msg_text, disable_web_page_preview=True)
+
+        # Перевіряємо кожну хвилину
+        await asyncio.sleep(60)
+
 # ────── РАНОК 11:00 ──────
 async def morning_task(bot, subscribers, stats):
     sent = set()
@@ -94,9 +129,9 @@ async def evening_task(bot, subscribers, stats):
 # ────── 5 РАНДОМНИХ ПОВІДОМЛЕНЬ ВДЕНЬ ──────
 async def random_love_task(bot, subscribers, stats):
     while True:
-        now = datetime.now()
-        start = datetime.combine(now.date(), time(10, 0))
-        end = datetime.combine(now.date(), time(22, 0))
+        now = datetime.now(KYIV_TZ)  # ЗМІНЕНО
+        start = datetime.combine(now.date(), time(10, 0), tzinfo=KYIV_TZ)  # ЗМІНЕНО
+        end = datetime.combine(now.date(), time(22, 0), tzinfo=KYIV_TZ)  # ЗМІНЕНО
 
         if now >= end:
             await asyncio.sleep(seconds_until(time(10, 0)))
@@ -107,7 +142,7 @@ async def random_love_task(bot, subscribers, stats):
 
         for offset in slots:
             target = start + timedelta(seconds=offset)
-            wait = (target - datetime.now()).total_seconds()
+            wait = (target - datetime.now(KYIV_TZ)).total_seconds()  # ЗМІНЕНО
             if wait > 0:
                 await asyncio.sleep(wait)
 
@@ -131,13 +166,12 @@ async def daily_quote_task(bot, subscribers, stats):
 
 
 # ────── СТАРТ ПЛАНУВАЛЬНИКА ──────
+# ────── СТАРТ ПЛАНУВАЛЬНИКА ──────
 async def start_scheduler(bot, subscribers, stats):
     asyncio.create_task(morning_task(bot, subscribers, stats))
     asyncio.create_task(evening_task(bot, subscribers, stats))
     asyncio.create_task(random_love_task(bot, subscribers, stats))
     asyncio.create_task(daily_quote_task(bot, subscribers, stats))
 
-    # --- Нагадування про ліки рівно по годинах ---
-    asyncio.create_task(schedule_pill(bot, subscribers, 12, 0, "Вітамін Є (день)"))
-    asyncio.create_task(schedule_pill(bot, subscribers, 20, 0, "Вітамін Є (вечір)"))
     asyncio.create_task(schedule_pill(bot, subscribers, 22, 0, "Магній + Гідазепам"))
+    asyncio.create_task(classes_reminder_task(bot, subscribers))

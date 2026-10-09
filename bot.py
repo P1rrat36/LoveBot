@@ -4,6 +4,8 @@ import json
 import logging
 from datetime import date
 
+from schedule_data import get_today_classes, get_current_week
+
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import CommandStart
 from aiogram.client.bot import DefaultBotProperties
@@ -69,8 +71,8 @@ main_keyboard = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="🌸 Комплімент"), KeyboardButton(text="🤗 Обійми")],
         [KeyboardButton(text="💋 Поцілунок"), KeyboardButton(text="💌 Підтримка")],
-        [KeyboardButton(text="🗓️ Дні разом"), KeyboardButton(text="📊 Статистика")],
-        [KeyboardButton(text="💭 Настрій")]
+        [KeyboardButton(text="🗓️ Дні разом"), KeyboardButton(text="🎓 Мої пари")],
+        [KeyboardButton(text="💭 Настрій"), KeyboardButton(text="📊 Статистика")]
     ],
     resize_keyboard=True
 )
@@ -197,6 +199,27 @@ async def handle_buttons(msg: types.Message):
             f"💋 Поцілунків: {stats.get('kisses', 0)}\n"
             f"💌 Підтримки: {stats.get('support', 0)}"
         )
+
+    elif text == "🎓 Мої пари":
+        classes = get_today_classes()
+        week = get_current_week()
+
+        if not classes:
+            await msg.answer(f"🎉 Котику, сьогодні ({week}-й тиждень) у тебе немає пар! Відпочивай і набирайся сил 💖")
+        else:
+            text_resp = f"📖 <b>Твій розклад на сьогодні ({week}-й тиждень):</b>\n\n"
+            for c in classes:
+                text_resp += (
+                    f"⏰ <b>{c['time']}</b> — {c['subject']} ({c['type']})\n"
+                    f"👩‍🏫 <i>{c['teacher']}</i>\n"
+                    f"🔗 <a href='{c['link']}'>Підключитися</a>\n\n"
+                )
+            text_resp += "Я вірю в тебе, кохана! Гарного навчання 😘"
+            await msg.answer(text_resp, disable_web_page_preview=True)
+
+        stats["total_messages"] = stats.get("total_messages", 0) + 1
+
+    # Зберігаємо статистику в самому кінці, незалежно від того, яку кнопку натиснуто
     save_stats(stats)
 
 
